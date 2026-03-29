@@ -1,6 +1,6 @@
 {
   "name": "TrialGraph",
-  "seed": 42,
+  "seed": 41,
   "no_duplicate_triples": true,
   "nodes": [
     {

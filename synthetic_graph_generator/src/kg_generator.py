@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from neo4j import GraphDatabase
 
-from utils import clamp, sample_int_uniform, sample_str, powerlaw_weights, cdf_from_weights, sample_from_cdf, visualize_matplotlib
+from utils import clamp, sample_int_uniform, sample_str, powerlaw_weights, cdf_from_weights, sample_from_cdf, save_kg_to_neo4j, KG
 
 def allocate_degrees_powerlaw_exact_sum(
     n: int,
@@ -128,54 +128,11 @@ def allocate_degrees_powerlaw_exact_sum(
 
     return deg
 
-@dataclass
-class Node:
-    id: int
-    label: str
-    props: Dict[str, Any]
-
-@dataclass
-class Edge:
-    src: int
-    dst: int
-    rel_type: str
-    props: Dict[str, Any]
-
-class KG:
-    def __init__(self) -> None:
-        self.nodes: List[Node] = []
-        self.nodes_by_label: Dict[str, List[int]] = defaultdict(list)
-        self.node_props: Dict[int, Dict[str, Any]] = {}
-        self.node_label: Dict[int, str] = {}
-        self.edges_by_type: Dict[str, List[Edge]] = defaultdict(list)
-        self.edge_keys: Dict[str, set] = defaultdict(set)
-
-    def add_node(self, label: str, props: Dict[str, Any]) -> int:
-        nid = len(self.nodes) + 1
-        props2 = dict(props)
-        props2["id"] = nid
-        self.nodes.append(Node(id=nid, label=label, props=props2))
-        self.nodes_by_label[label].append(nid)
-        self.node_props[nid] = props2
-        self.node_label[nid] = label
-        return nid
-
-    def add_edge(self, rel_type: str, src: int, dst: int, props: Dict[str, Any], no_duplicates: bool = True) -> bool:
-        key = (src << 32) | dst
-        if no_duplicates:
-            if key in self.edge_keys[rel_type]:
-                return False
-        self.edge_keys[rel_type].add(key)
-        self.edges_by_type[rel_type].append(Edge(src=src, dst=dst, rel_type=rel_type, props=dict(props)))
-        return True
-
 def _gen_node_properties(node_def: Dict[str, Any], rng: random.Random) -> List[Dict[str, Any]]:
     props_defs = node_def.get("properties", [])
     count = int(node_def.get("count", 0))
-    label = node_def["label"]
 
     unique_track: Dict[str, set] = defaultdict(set)
-    unique_counters: Dict[str, int] = defaultdict(int)
 
     result: List[Dict[str, Any]] = []
     for _ in range(count):
@@ -189,23 +146,45 @@ def _gen_node_properties(node_def: Dict[str, Any], rng: random.Random) -> List[D
                 lo = int(p.get("min", 0))
                 hi = int(p.get("max", lo))
                 val = sample_int_uniform(lo, hi, rng)
+
+            elif ptype in ("float", "double"):
+                lo = float(p.get("min", 0.0))
+                hi = float(p.get("max", lo))
+                if pname.lower() == "rating":
+                    lo_i = int(math.ceil(lo))
+                    hi_i = int(math.floor(hi))
+                    val = float(rng.randint(lo_i, hi_i))
+                else:
+                    val = round(rng.uniform(lo, hi), 4)
+
+            elif ptype in ("boolean", "bool"):
+                val = bool(rng.getrandbits(1))
+
             elif ptype in ("string", "str"):
-                gen_kind = p.get("generator")
-                if gen_kind is None:
-                    gen_kind = "email" if pname.lower().endswith("email") else "name" if pname.lower() == "name" else "token"
-                unique_counters[pname] += 1
                 val = sample_str(rng)
+
             else:
                 val = None
 
             if unique:
                 tries = 0
-                while val in unique_track[pname] and tries < 50:
-                    unique_counters[pname] += 1
+                while val in unique_track[pname] and tries < 100:
                     if ptype in ("integer", "int"):
-                        val = sample_int_uniform(int(p.get("min", 0)), int(p.get("max", 0)), rng)
+                        lo = int(p.get("min", 0))
+                        hi = int(p.get("max", lo))
+                        val = sample_int_uniform(lo, hi, rng)
+                    elif ptype in ("float", "double"):
+                        lo = float(p.get("min", 0.0))
+                        hi = float(p.get("max", lo))
+                        if pname.lower() == "rating":
+                            lo_i = int(math.ceil(lo))
+                            hi_i = int(math.floor(hi))
+                            val = float(rng.randint(lo_i, hi_i))
+                        else:
+                            val = round(rng.uniform(lo, hi), 4)
+                    elif ptype in ("boolean", "bool"):
+                        val = bool(rng.getrandbits(1))
                     else:
-                        gen_kind = p.get("generator") or ("email" if pname.lower().endswith("email") else "token")
                         val = sample_str(rng)
                     tries += 1
                 unique_track[pname].add(val)
@@ -221,14 +200,26 @@ def _gen_edge_properties(rel_def: Dict[str, Any], rng: random.Random) -> Dict[st
     for p in rel_def.get("properties", []) or []:
         pname = p["name"]
         ptype = p["type"]
+
         if ptype in ("integer", "int"):
             lo = int(p.get("min", 0))
             hi = int(p.get("max", lo))
             props[pname] = sample_int_uniform(lo, hi, rng)
+
+        elif ptype in ("float", "double"):
+            lo = float(p.get("min", 0.0))
+            hi = float(p.get("max", lo))
+            props[pname] = round(rng.uniform(lo, hi), 4)
+
+        elif ptype in ("boolean", "bool"):
+            props[pname] = bool(rng.getrandbits(1))
+
         elif ptype in ("string", "str"):
-            props[pname] = sample_str("token", rng)
+            props[pname] = sample_str(rng)
+
         else:
             props[pname] = None
+
     return props
 
 def generate_kg_from_schema(schema_path: str, alpha: float = 2.3) -> KG:
@@ -339,11 +330,13 @@ def generate_kg_from_schema(schema_path: str, alpha: float = 2.3) -> KG:
 
 
 def main():
-    schema = "schemas/trial_schema.json"
+    schema = "synthetic_graph_generator/schemas/amazon_inferred_schema.json"
 
     kg = generate_kg_from_schema(schema)
+
+    print("Total nodes:", len(kg.nodes))
+    save_kg_to_neo4j(kg, uri="bolt://localhost:7687", user="neo4j", password="password", database="neo4j")
     
-    visualize_matplotlib(kg, max_nodes=1000, max_edges=8000, seed=42)
 
 if __name__ == "__main__":
     main()
