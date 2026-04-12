@@ -1,0 +1,136 @@
+{
+  "seed": 42,
+  "no_duplicate_triples": true,
+  "nodes": [
+    {
+      "label": "User",
+      "count": 1754118,
+      "properties": [
+        {
+          "name": "user_id",
+          "type": "string",
+          "unique": true
+        }
+      ]
+    },
+    {
+      "label": "Product",
+      "count": 701706,
+      "properties": [
+        {
+          "name": "asin",
+          "type": "string",
+          "unique": true
+        }
+      ]
+    },
+    {
+      "label": "Review",
+      "count": 4827273,
+      "properties": [
+        {
+          "name": "helpful_vote",
+          "type": "integer",
+          "min": 0,
+          "max": 2172
+        },
+        {
+          "name": "images_count",
+          "type": "integer",
+          "min": 0,
+          "max": 160
+        },
+        {
+          "name": "rating",
+          "type": "float",
+          "min": 1.0,
+          "max": 5.0
+        },
+        {
+          "name": "review_id",
+          "type": "string",
+          "unique": true
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "verified_purchase",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "label": "ProductGroup",
+      "count": 701673,
+      "properties": [
+        {
+          "name": "parent_asin",
+          "type": "string",
+          "unique": true
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "type": "WROTE",
+      "from_node": "User",
+      "to_node": "Review",
+      "count": 4827273,
+      "constraints": {
+        "allow_self_loop": false,
+        "from_degree": {
+          "min": 1,
+          "max": 2602
+        },
+        "to_degree": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "properties": []
+    },
+    {
+      "type": "ABOUT",
+      "from_node": "Review",
+      "to_node": "Product",
+      "count": 4827273,
+      "constraints": {
+        "allow_self_loop": false,
+        "from_degree": {
+          "min": 1,
+          "max": 1
+        },
+        "to_degree": {
+          "min": 1,
+          "max": 4392
+        }
+      },
+      "properties": []
+    },
+    {
+      "type": "BELONGS_TO",
+      "from_node": "Product",
+      "to_node": "ProductGroup",
+      "count": 701706,
+      "constraints": {
+        "allow_self_loop": false,
+        "from_degree": {
+          "min": 1,
+          "max": 1
+        },
+        "to_degree": {
+          "min": 1,
+          "max": 8
+        }
+      },
+      "properties": []
+    }
+  ]
+}

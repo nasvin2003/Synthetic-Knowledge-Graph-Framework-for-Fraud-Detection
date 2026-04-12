@@ -1,16 +1,11 @@
-import json
 import math
-import os
 import random
-import re
-import time
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List
 
-from neo4j import GraphDatabase
-
+from schema_text_parser import load_schema_definition
 from utils import clamp, sample_int_uniform, sample_str, powerlaw_weights, cdf_from_weights, sample_from_cdf, save_kg_to_neo4j, KG
+
 
 def allocate_degrees_powerlaw_exact_sum(
     n: int,
@@ -38,7 +33,7 @@ def allocate_degrees_powerlaw_exact_sum(
     if remaining == 0:
         return deg
 
-    cap = [kmax - kmin] * n 
+    cap = [kmax - kmin] * n
 
     extra_min = 0
     extra_max = kmax - kmin
@@ -128,6 +123,8 @@ def allocate_degrees_powerlaw_exact_sum(
 
     return deg
 
+
+
 def _gen_node_properties(node_def: Dict[str, Any], rng: random.Random) -> List[Dict[str, Any]]:
     props_defs = node_def.get("properties", [])
     count = int(node_def.get("count", 0))
@@ -195,6 +192,7 @@ def _gen_node_properties(node_def: Dict[str, Any], rng: random.Random) -> List[D
     return result
 
 
+
 def _gen_edge_properties(rel_def: Dict[str, Any], rng: random.Random) -> Dict[str, Any]:
     props: Dict[str, Any] = {}
     for p in rel_def.get("properties", []) or []:
@@ -222,9 +220,10 @@ def _gen_edge_properties(rel_def: Dict[str, Any], rng: random.Random) -> Dict[st
 
     return props
 
+
+
 def generate_kg_from_schema(schema_path: str, alpha: float = 2.3) -> KG:
-    with open(schema_path, "r", encoding="utf-8") as f:
-        schema = json.load(f)
+    schema = load_schema_definition(schema_path)
 
     seed = int(schema.get("seed", 0) or 0)
     rng = random.Random(seed)
@@ -271,7 +270,7 @@ def generate_kg_from_schema(schema_path: str, alpha: float = 2.3) -> KG:
             in_max = min(in_max, len(sources) - 1)
 
         out_deg = allocate_degrees_powerlaw_exact_sum(len(sources), out_min, out_max, count, alpha, rng)
-        in_deg  = allocate_degrees_powerlaw_exact_sum(len(targets), in_min,  in_max,  count, alpha, rng)
+        in_deg = allocate_degrees_powerlaw_exact_sum(len(targets), in_min, in_max, count, alpha, rng)
 
         out_stubs: List[int] = []
         for sid, d in zip(sources, out_deg):
@@ -293,7 +292,7 @@ def generate_kg_from_schema(schema_path: str, alpha: float = 2.3) -> KG:
         tries = 0
 
         while edges_made < count and tries < max_global_tries and out_stubs:
-            s = out_stubs.pop() 
+            s = out_stubs.pop()
             placed = False
             local_tries = 0
             while not placed and local_tries < 30 and in_stubs:
@@ -322,21 +321,18 @@ def generate_kg_from_schema(schema_path: str, alpha: float = 2.3) -> KG:
             if not placed:
                 tries += 1
 
-        if edges_made < count:
-            pass
-
     return g
 
 
 
-def main():
-    schema = "synthetic_graph_generator/schemas/amazon_inferred_schema.json"
-
+def main() -> None:
+    schema = "synthetic_graph_generator/schemas/amazon_inferred_schema.txt"
     kg = generate_kg_from_schema(schema)
-
     print("Total nodes:", len(kg.nodes))
+    print("Total edges:", sum(len(v) for v in kg.edges_by_type.values()))
+
     save_kg_to_neo4j(kg, uri="bolt://localhost:7687", user="neo4j", password="password", database="neo4j")
-    
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,51 @@
+@seed=42
+@no_duplicate_triples=true
+
+User(
+    user_id:string[unique=true]
+) [count=100952]
+
+Product(
+    asin:string[unique=true]
+) [count=70519]
+
+Review(
+    helpful_vote:int[min=0,max=259],
+    images_count:int[min=0,max=18],
+    rating:float[min=1.0,max=5.0],
+    review_id:string[unique=true],
+    text:string,
+    title:string,
+    verified_purchase:boolean
+) [count=130434]
+
+ProductGroup(
+    parent_asin:string[unique=true]
+) [count=70511]
+
+WROTE(User -> Review) [
+    count=130434,
+    allow_self_loop=false,
+    from_degree.min=1,
+    from_degree.max=341,
+    to_degree.min=1,
+    to_degree.max=1
+]
+
+ABOUT(Review -> Product) [
+    count=130434,
+    allow_self_loop=false,
+    from_degree.min=1,
+    from_degree.max=1,
+    to_degree.min=1,
+    to_degree.max=398
+]
+
+BELONGS_TO(Product -> ProductGroup) [
+    count=70519,
+    allow_self_loop=false,
+    from_degree.min=1,
+    from_degree.max=1,
+    to_degree.min=1,
+    to_degree.max=3
+]
